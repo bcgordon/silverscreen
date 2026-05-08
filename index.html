@@ -155,6 +155,24 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);min-hei
 .genre-chip.selected{background:var(--text);color:var(--bg);border-color:var(--text)}
 .genre-chip:active{transform:scale(.93)}
 
+/* ── Filter panel ── */
+.filter-panel{
+  overflow:hidden;max-height:0;transition:max-height .3s ease, padding .3s ease;
+  background:var(--bg2);border-bottom:1px solid var(--card-border);
+  padding:0 20px;
+}
+.filter-panel.open{max-height:120px;padding:14px 20px}
+.filter-panel-label{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:10px}
+.filter-chips{display:flex;gap:7px;flex-wrap:wrap}
+.filter-chip{
+  padding:5px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;
+  border:1px solid var(--card-border);background:var(--card);cursor:pointer;
+  color:var(--text2);font-family:var(--font-sans);transition:var(--trans);
+}
+.filter-chip.active{background:var(--text);color:var(--bg);border-color:var(--text)}
+.filter-chip:active{transform:scale(.93)}
+.icon-btn.filter-active{background:var(--gold);border-color:var(--gold);color:#1a1200}
+
 /* ── Watch action ── */
 .watch-action{margin-top:12px;padding-top:12px;border-top:1px solid var(--card-border)}
 .watch-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -260,9 +278,14 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);min-hei
         <h1>Silver Screen</h1>
       </div>
       <div class="header-right">
+        <button class="icon-btn" id="filter-btn" onclick="toggleFilterPanel()" title="Filter by genre">⊟</button>
         <button class="icon-btn" id="dark-btn" onclick="toggleDark()" title="Toggle theme">☽</button>
         <button class="icon-btn" onclick="lockApp()" title="Lock / change passcode">⊠</button>
       </div>
+    </div>
+    <div class="filter-panel" id="filter-panel">
+      <div class="filter-panel-label">Filter by genre</div>
+      <div class="filter-chips" id="filter-chips"></div>
     </div>
     <div class="tabs">
       <button class="tab active" id="tab-watchlist" onclick="setTab('watchlist')">Watchlist</button>
@@ -298,6 +321,8 @@ let activeTab = 'watchlist';
 let state = { movies: [] };
 let selectedSuggesters = [];
 let selectedGenre = null;
+let activeGenreFilter = null;
+let filterPanelOpen = false;
 
 // ── Helpers ──
 function storageKey() { return 'ss_data_' + passcode; }
@@ -359,6 +384,8 @@ function lockApp() {
   passcode = '';
   currentPc = '';
   selectedSuggesters = [];
+  activeGenreFilter = null;
+  filterPanelOpen = false;
   updateDots();
   document.getElementById('pc-err').textContent = '';
   document.getElementById('passcode-screen').style.display = 'flex';
@@ -411,18 +438,23 @@ function renderTab() {
 }
 
 function renderWatchlist() {
-  const pending = state.movies.filter(m => !m.watched);
+  let pending = state.movies.filter(m => !m.watched);
+  if (activeGenreFilter !== null) {
+    pending = pending.filter(m => m.genre === GENRES[activeGenreFilter]);
+  }
   let html = renderAddForm();
   if (!pending.length) {
+    const isFiltered = activeGenreFilter !== null;
     html += `<div class="empty">
       <div class="empty-star">✦</div>
       <div class="empty-rule"></div>
-      <h3>The reel is empty</h3>
-      <p>Select who's suggesting and add a film to begin your family watchlist.</p>
+      <h3>${isFiltered ? 'No ' + GENRES[activeGenreFilter] + ' films' : 'The reel is empty'}</h3>
+      <p>${isFiltered ? 'No watchlist films match this genre. Try another or clear the filter.' : 'Select who\'s suggesting and add a film to begin your family watchlist.'}</p>
     </div>`;
   } else {
+    const label = activeGenreFilter !== null ? GENRES[activeGenreFilter] : 'Up Next';
     html += `<div class="list">
-      <div class="section-head">Up Next</div>
+      <div class="section-head">${label}</div>
       ${pending.map(renderCard).join('')}
     </div>`;
   }
@@ -430,19 +462,24 @@ function renderWatchlist() {
 }
 
 function renderWatched() {
-  const watched = state.movies
+  let watched = state.movies
     .filter(m => m.watched)
     .sort((a, b) => (b.watchedDate || '') > (a.watchedDate || '') ? 1 : -1);
+  if (activeGenreFilter !== null) {
+    watched = watched.filter(m => m.genre === GENRES[activeGenreFilter]);
+  }
   if (!watched.length) {
+    const isFiltered = activeGenreFilter !== null;
     return `<div class="empty">
       <div class="empty-star">★</div>
       <div class="empty-rule"></div>
-      <h3>No films screened yet</h3>
-      <p>Mark films as watched from your watchlist to see them here.</p>
+      <h3>${isFiltered ? 'No ' + GENRES[activeGenreFilter] + ' films watched' : 'No films screened yet'}</h3>
+      <p>${isFiltered ? 'No watched films match this genre.' : 'Mark films as watched from your watchlist to see them here.'}</p>
     </div>`;
   }
+  const label = activeGenreFilter !== null ? GENRES[activeGenreFilter] + ' — Screened' : 'Screened';
   return `<div class="list">
-    <div class="section-head">Screened</div>
+    <div class="section-head">${label}</div>
     ${watched.map(renderCard).join('')}
   </div>`;
 }
@@ -516,6 +553,33 @@ function renderCard(m) {
 }
 
 // ── Actions ──
+function toggleFilterPanel() {
+  filterPanelOpen = !filterPanelOpen;
+  const panel = document.getElementById('filter-panel');
+  const btn = document.getElementById('filter-btn');
+  if (panel) panel.className = 'filter-panel' + (filterPanelOpen ? ' open' : '');
+  if (btn) btn.className = 'icon-btn' + (activeGenreFilter !== null ? ' filter-active' : '');
+  if (filterPanelOpen) renderFilterChips();
+}
+function renderFilterChips() {
+  const container = document.getElementById('filter-chips');
+  if (!container) return;
+  // Only show genres that have movies
+  const usedGenres = new Set(state.movies.map(m => m.genre).filter(Boolean));
+  const chips = GENRES.filter(g => usedGenres.has(g)).map((g, _) => {
+    const idx = GENRES.indexOf(g);
+    const active = activeGenreFilter === idx;
+    return `<button class="filter-chip${active ? ' active' : ''}" onclick="setGenreFilter(${idx})">${g}</button>`;
+  }).join('');
+  container.innerHTML = chips || '<span style="font-size:12px;color:var(--text3)">No genres assigned yet</span>';
+}
+function setGenreFilter(i) {
+  activeGenreFilter = activeGenreFilter === i ? null : i;
+  const btn = document.getElementById('filter-btn');
+  if (btn) btn.className = 'icon-btn' + (activeGenreFilter !== null ? ' filter-active' : '');
+  renderFilterChips();
+  renderTab();
+}
 function toggleChip(i) {
   const idx = selectedSuggesters.indexOf(i);
   if (idx >= 0) selectedSuggesters.splice(idx, 1);
