@@ -146,6 +146,14 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);min-hei
   padding:2px 7px;border-radius:3px;background:var(--bg2);color:var(--text3);font-weight:700;
 }
 .meta-tag.gold{background:rgba(201,168,76,.13);color:var(--gold-dim)}
+.meta-tag.genre{background:var(--bg3);color:var(--text2)}
+.genre-chip{
+  padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;
+  border:1px solid var(--card-border);background:none;cursor:pointer;
+  color:var(--text2);font-family:var(--font-sans);transition:var(--trans);
+}
+.genre-chip.selected{background:var(--text);color:var(--bg);border-color:var(--text)}
+.genre-chip:active{transform:scale(.93)}
 
 /* ── Watch action ── */
 .watch-action{margin-top:12px;padding-top:12px;border-top:1px solid var(--card-border)}
@@ -279,6 +287,7 @@ body{font-family:var(--font-sans);background:var(--bg);color:var(--text);min-hei
 
 <script>
 const MEMBERS = ['Brian', 'Heidi', 'Charli'];
+const GENRES = ['Comedy', 'Drama', 'Action', 'Thriller', 'Family', 'Sci-Fi / Fantasy'];
 const PC_KEY = 'ss_passcode';
 const DARK_KEY = 'ss_dark';
 
@@ -288,6 +297,7 @@ let darkMode = false;
 let activeTab = 'watchlist';
 let state = { movies: [] };
 let selectedSuggesters = [];
+let selectedGenre = null;
 
 // ── Helpers ──
 function storageKey() { return 'ss_data_' + passcode; }
@@ -385,6 +395,7 @@ function toggleDark() {
 function setTab(t) {
   activeTab = t;
   selectedSuggesters = [];
+  selectedGenre = null;
   ['watchlist', 'watched'].forEach(id => {
     document.getElementById('tab-' + id).className = 'tab' + (t === id ? ' active' : '');
     document.getElementById('nav-' + id).className = 'nav-btn' + (t === id ? ' active' : '');
@@ -437,13 +448,19 @@ function renderWatched() {
 }
 
 function renderAddForm() {
-  const chips = MEMBERS.map((m, i) => {
+  const memberChips = MEMBERS.map((m, i) => {
     const sel = selectedSuggesters.includes(i);
     return `<button class="suggester-chip${sel ? ' selected' : ''}" onclick="toggleChip(${i})">${m}</button>`;
   }).join('');
+  const genreChips = GENRES.map((g, i) => {
+    const sel = selectedGenre === i;
+    return `<button class="genre-chip${sel ? ' selected' : ''}" onclick="toggleGenre(${i})">${g}</button>`;
+  }).join('');
   return `<div class="add-form">
     <div class="suggester-label">Who's suggesting?</div>
-    <div class="suggester-row">${chips}</div>
+    <div class="suggester-row">${memberChips}</div>
+    <div class="suggester-label">Genre</div>
+    <div class="suggester-row">${genreChips}</div>
     <div class="form-row">
       <input class="text-input" id="movie-input" placeholder="Film title..." onkeydown="if(event.key==='Enter')doAdd()">
       <button class="gold-btn" onclick="doAdd()">Add</button>
@@ -491,6 +508,7 @@ function renderCard(m) {
     </div>
     <div class="card-meta">
       ${suggesters.map(s => `<span class="meta-tag gold">${s}</span>`).join('')}
+      ${m.genre ? `<span class="meta-tag genre">${esc(m.genre)}</span>` : ''}
       ${addedFmt ? `<span class="meta-tag">${esc(addedFmt)}</span>` : ''}
     </div>
     ${bottomSection}
@@ -505,6 +523,11 @@ function toggleChip(i) {
   renderTab();
   setTimeout(() => { const inp = document.getElementById('movie-input'); if (inp) inp.focus(); }, 10);
 }
+function toggleGenre(i) {
+  selectedGenre = selectedGenre === i ? null : i;
+  renderTab();
+  setTimeout(() => { const inp = document.getElementById('movie-input'); if (inp) inp.focus(); }, 10);
+}
 
 function doAdd() {
   const inp = document.getElementById('movie-input');
@@ -514,11 +537,13 @@ function doAdd() {
     title: inp.value.trim(),
     watched: false,
     suggesters: [...selectedSuggesters],
+    genre: selectedGenre !== null ? GENRES[selectedGenre] : null,
     ratings: {},
     added: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   });
   inp.value = '';
   selectedSuggesters = [];
+  selectedGenre = null;
   saveState();
   renderTab();
   showToast('Added to watchlist');
