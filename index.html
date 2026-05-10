@@ -366,7 +366,6 @@ async function sbFetch(path, opts={}) {
       'apikey': SUPABASE_KEY,
       'Authorization': 'Bearer ' + SUPABASE_KEY,
       'Content-Type': 'application/json',
-      'Prefer': 'return=representation',
       ...(opts.headers || {})
     }
   });
@@ -376,11 +375,19 @@ async function sbFetch(path, opts={}) {
 async function cloudLoad() {
   try {
     const res = await sbFetch('/rest/v1/watchlists?pin=eq.' + encodeURIComponent(passcode) + '&select=data');
-    if (!res.ok) return null;
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Supabase load error:', res.status, errText);
+      return null;
+    }
     const rows = await res.json();
+    console.log('Supabase load response:', rows);
     if (rows && rows.length > 0 && rows[0].data) return rows[0].data;
     return null;
-  } catch(e) { return null; }
+  } catch(e) {
+    console.error('Supabase load exception:', e);
+    return null;
+  }
 }
 
 async function cloudSave() {
@@ -389,19 +396,23 @@ async function cloudSave() {
     const payload = JSON.stringify({ pin: passcode, data: state, updated_at: new Date().toISOString() });
     const res = await sbFetch('/rest/v1/watchlists', {
       method: 'POST',
-      headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      headers: { 
+        'Prefer': 'resolution=merge-duplicates,return=minimal',
+        'Content-Type': 'application/json'
+      },
       body: payload
     });
     if (res.ok || res.status === 201 || res.status === 204) {
       saveLocal();
       setSyncStatus('ok', 'Saved ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}));
     } else {
-      const err = await res.text();
-      console.error('Supabase save error:', res.status, err);
+      const errText = await res.text();
+      console.error('Supabase save error:', res.status, errText);
       saveLocal();
-      setSyncStatus('err', 'Save failed — stored locally');
+      setSyncStatus('err', 'Error ' + res.status + ' — saved locally');
     }
   } catch(e) {
+    console.error('Supabase save exception:', e);
     saveLocal();
     setSyncStatus('err', 'Offline — saved locally');
   }
@@ -418,8 +429,6 @@ async function syncNow() {
   setSyncStatus('syncing', 'Syncing…');
   const remote = await cloudLoad();
   if (remote) {
-    // Merge: keep all movies, prefer remote for conflicts by id
-    const localIds = new Set(state.movies.map(m => m.id));
     const remoteIds = new Set(remote.movies.map(m => m.id));
     const merged = [
       ...remote.movies,
@@ -429,8 +438,10 @@ async function syncNow() {
     saveLocal();
     setSyncStatus('ok', 'Synced ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}));
     renderTab();
+    showToast('Synced with cloud ✓');
   } else {
-    setSyncStatus('err', 'Could not reach server');
+    setSyncStatus('err', 'Could not reach Supabase');
+    showToast('Sync failed — check connection');
   }
 }
 
